@@ -1,4 +1,4 @@
-const products = [
+let products = [
   {id:'espirometria', cat:'ocupacionais', title:'Espirometria', desc:'Exame de função pulmonar realizado no consultório.', price:55},
   {id:'aso', cat:'ocupacionais', title:'Consulta Médica / ASO', desc:'Avaliação médica ocupacional e emissão do ASO.', price:60},
   {id:'periodico', cat:'ocupacionais', title:'Exame Periódico', desc:'Avaliação periódica ocupacional.', price:50},
@@ -34,6 +34,8 @@ const products = [
   {id:'cobre', cat:'lab', title:'Cobre', desc:'Dosagem laboratorial.', price:30},
   {id:'selênio', cat:'lab', title:'Selênio', desc:'Dosagem laboratorial.', price:35}
 ];
+const baseProducts=products.map(p=>({...p}));
+let catalogReady=false;
 const $=id=>document.getElementById(id);
 const normalize=v=>v.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
 const money=v=>v.toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
@@ -46,11 +48,43 @@ function track(event,detail={}){window.dispatchEvent(new CustomEvent('site:analy
 function notify(message){$('notice').textContent=message;$('notice').style.display='block';clearTimeout(window.noticeTimer);window.noticeTimer=setTimeout(()=>{$('notice').style.display='none';},2500);}
 function filtered(){const q=normalize($('search').value);return products.filter(p=>($('category').value==='all'||p.cat===$('category').value)&&normalize(p.title+' '+p.desc+' '+({audicao:'audição visão',ocupacionais:'ocupacional',cardio:'cardiológico',imagem:'imagem',lab:'laboratorial'})[p.cat]).includes(q));}
 function render(){const list=filtered(),isFiltering=$('search').value.trim()||$('category').value!=='all';const visible=expanded||isFiltering?list:list.slice(0,6);$('products').innerHTML=visible.map(p=>`<article class="card"><div class="eyebrow">${({ocupacionais:'Ocupacionais',audicao:'Audição e visão',cardio:'Cardiológicos',imagem:'Imagem',lab:'Laboratoriais'})[p.cat]}</div><h3 style="margin-top:20px">${p.title}</h3><p>${p.desc}</p><span class="location-badge">${onsite.has(p.id)?"No consultório":"Em parceiro"}</span><div class="price-row"><strong>${money(p.price)}</strong><button class="btn" data-add="${p.id}" aria-label="Adicionar ${p.title}">Adicionar +</button></div><small>Preço por pessoa</small></article>`).join('')||'<p class="empty">Nenhum exame encontrado. Tente outro termo ou fale com o consultório.</p>';$('showall').hidden=!!isFiltering||list.length<=6;$('showall').textContent=expanded?'Mostrar lista inicial':'Ver catálogo completo ('+products.length+')';}
-function updateCart(){let total=0,count=0;const list=products.filter(p=>cart[p.id]);$('cartitems').innerHTML=list.map(p=>{const q=cart[p.id];count+=q;total+=q*p.price;return `<div class="cartrow"><div><h3>${p.title}</h3><p>${money(p.price)} por pessoa</p></div><div class="qty"><button data-change="${p.id}" data-delta="-1" aria-label="Diminuir quantidade de ${p.title}">−</button><span>${q}</span><button data-change="${p.id}" data-delta="1" aria-label="Aumentar quantidade de ${p.title}">+</button></div></div>`;}).join('')||'<p>Sua solicitação está vazia. Adicione exames ou fale diretamente com o consultório.</p>';$('count').textContent=count;$('total').textContent=money(total);$('send').disabled=count===0;try{localStorage.setItem(storageKey,JSON.stringify(cart));}catch{}}
+function updateCart(){let total=0,count=0;const list=products.filter(p=>cart[p.id]);$('cartitems').innerHTML=list.map(p=>{const q=cart[p.id];count+=q;total+=q*p.price;return `<div class="cartrow"><div><h3>${p.title}</h3><p>${money(p.price)} por pessoa</p></div><div class="qty"><button data-change="${p.id}" data-delta="-1" aria-label="Diminuir quantidade de ${p.title}">−</button><span>${q}</span><button data-change="${p.id}" data-delta="1" aria-label="Aumentar quantidade de ${p.title}">+</button></div></div>`;}).join('')||'<p>Sua solicitação está vazia. Adicione exames ou fale diretamente com o consultório.</p>';$('count').textContent=count;$('total').textContent=money(total);$('send').disabled=!catalogReady||count===0;try{localStorage.setItem(storageKey,JSON.stringify(cart));}catch{}}
 $('products').addEventListener('click',e=>{const b=e.target.closest('[data-add]');if(!b)return;const id=b.dataset.add;cart[id]=Math.min((cart[id]||0)+1,999);updateCart();track('request_add',{exam:id});notify('Exame adicionado à solicitação');});
 $('cartitems').addEventListener('click',e=>{const b=e.target.closest('[data-change]');if(!b)return;const id=b.dataset.change;cart[id]=Math.min((cart[id]||0)+Number(b.dataset.delta),999);if(cart[id]<=0)delete cart[id];updateCart();});
 $('search').addEventListener('input',()=>{render();clearTimeout(window.searchTimer);window.searchTimer=setTimeout(()=>track('catalog_search',{result_count:filtered().length}),600);});$('category').addEventListener('change',render);$('showall').addEventListener('click',()=>{expanded=!expanded;render();});
 $('cartopen').addEventListener('click',()=>{$('cartdialog').showModal();track('request_open');});$('cartclose').addEventListener('click',()=>$('cartdialog').close());$('clear').addEventListener('click',()=>{cart={};updateCart();notify('Solicitação limpa');});
-$('send').addEventListener('click',()=>{const items=products.filter(p=>cart[p.id]);if(!items.length)return;const total=items.reduce((n,p)=>n+p.price*cart[p.id],0);const lines=['Olá, Dr. Felipe! Gostaria de confirmar o atendimento para os seguintes exames:','',...items.map(p=>`${p.title} — ${cart[p.id]} pessoa(s) — ${money(p.price*cart[p.id])}`),'',`Total de referência: ${money(total)}`,'Gostaria de confirmar os valores, a disponibilidade, os locais de realização e os documentos necessários.'];track('whatsapp_request',{item_count:items.length});window.open('https://wa.me/5548920013350?text='+encodeURIComponent(lines.join('\n')),'_blank','noopener,noreferrer');});
+$('send').addEventListener('click',()=>{if(!catalogReady){notify('Consulte o atendimento para confirmar os valores.');return;}const items=products.filter(p=>cart[p.id]);if(!items.length)return;const total=items.reduce((n,p)=>n+p.price*cart[p.id],0);const lines=['Olá, Dr. Felipe! Gostaria de confirmar o atendimento para os seguintes exames:','',...items.map(p=>`${p.title} — ${cart[p.id]} pessoa(s) — ${money(p.price*cart[p.id])}`),'',`Total de referência: ${money(total)}`,'Gostaria de confirmar os valores, a disponibilidade, os locais de realização e os documentos necessários.'];track('whatsapp_request',{item_count:items.length});window.open('https://wa.me/5548920013350?text='+encodeURIComponent(lines.join('\n')),'_blank','noopener,noreferrer');});
 document.querySelectorAll('[data-event]').forEach(a=>a.addEventListener('click',()=>track(a.dataset.event)));
 render();updateCart();
+
+const sheetUrl='https://docs.google.com/spreadsheets/d/1FkJCDEpMkvjBBFdWf6OopHSZwfCMYe2Tmgeveiok-XA/gviz/tq?tqx=out:csv&gid=0&range=A1:D1000';
+function parseCSV(text){
+ const rows=[];let row=[],cell='',quoted=false;
+ for(let i=0;i<text.length;i++){const c=text[i];if(c==='"'){if(quoted&&text[i+1]==='"'){cell+='"';i++;}else quoted=!quoted;}else if(c===','&&!quoted){row.push(cell);cell='';}else if((c==='\n'||c==='\r')&&!quoted){if(c==='\r'&&text[i+1]==='\n')i++;row.push(cell);if(row.some(v=>v.trim()))rows.push(row);row=[];cell='';}else cell+=c;}
+ if(quoted)throw Error('CSV inválido');row.push(cell);if(row.some(v=>v.trim()))rows.push(row);return rows;
+}
+function sheetCatalog(text){
+ const rows=parseCSV(text.replace(/^\uFEFF/,''));const header=rows.shift()?.map(normalize);
+ if(!header||['codigo','exame','preco','disponivel'].some((h,i)=>header[i]!==h))throw Error('Cabeçalho inválido');
+ const byId=new Map();const known=new Set(baseProducts.map(p=>p.id));
+ for(const row of rows){const id=row[0]?.trim();if(!id||!known.has(id))continue;if(byId.has(id))throw Error('Código duplicado');
+ const enabled=normalize(row[3]||'');if(!['true','false','verdadeiro','falso','sim','nao'].includes(enabled))throw Error('Disponibilidade inválida');
+ const active=['true','verdadeiro','sim'].includes(enabled);let raw=(row[2]||'').replace(/R\$/gi,'').replace(/\s/g,'');if(raw.includes(','))raw=raw.replace(/\./g,'').replace(',','.');
+ if(active&&(!/^(?:\d+)(?:\.\d{1,2})?$/.test(raw)||!Number.isFinite(Number(raw))||Number(raw)<0))throw Error('Preço inválido');
+ byId.set(id,{active,price:Number(raw)});
+ }
+ if(!byId.size)throw Error('Catálogo vazio');return baseProducts.filter(p=>byId.get(p.id)?.active).map(p=>({...p,price:byId.get(p.id).price}));
+}
+let catalogLoading=false,lastCatalogLoad=0;
+async function loadCatalog(){
+ if(catalogLoading)return;catalogLoading=true;catalogReady=false;$('send').disabled=true;$('catalogstatus').textContent='Atualizando preços e disponibilidade…';
+ const controller=new AbortController();const timeout=setTimeout(()=>controller.abort(),12000);
+ try{const response=await fetch(sheetUrl+'&_='+Date.now(),{signal:controller.signal,cache:'no-store',credentials:'omit'});if(!response.ok)throw Error('Catálogo indisponível');
+ const next=sheetCatalog(await response.text());products=next;for(const id of Object.keys(cart))if(!products.some(p=>p.id===id))delete cart[id];catalogReady=true;
+ $('catalogstatus').textContent='Preços consultados na planilha. Confirme a disponibilidade no agendamento.';
+ const spirometry=products.find(p=>p.id==='espirometria');$('spirometryprice').textContent=spirometry?money(spirometry.price):'Consultar disponibilidade';
+ }catch{products=[];$('catalogstatus').textContent='Não foi possível consultar o catálogo agora. Fale com o consultório pelo WhatsApp para confirmar exames e valores.';$('spirometryprice').textContent='Consultar valor';}
+ finally{clearTimeout(timeout);catalogLoading=false;lastCatalogLoad=Date.now();render();updateCart();}
+}
+products=[];render();updateCart();loadCatalog();
+window.addEventListener('focus',()=>{if(Date.now()-lastCatalogLoad>60000)loadCatalog();});
